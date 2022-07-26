@@ -1,0 +1,11 @@
+-o {clip_output:s} - --y4m --frames {frames:d}
+--fps {fps_num:d}/{fps_den:d} --sar 1 --videoformat ntsc --range limited
+--colormatrix bt709 --colorprim bt709 --transfer bt709
+--min-luma {min_luma:d} --max-luma {max_luma:d}
+--ctu 32 --max-tu-size 16 --no-cutree --no-strong-intra-smoothing
+--cbqpoffs -2 --crqpoffs -2 --no-early-skip --rskip 0 --min-keyint 24 --keyint 250
+--rc-lookahead 72 --ref 6 --bframes 16 --b-pyramid --b-adapt 2 --no-sao --no-sao-non-deblock
+--aq-mode 3 --aq-strength 0.95 --deblock -2:-2 --tu-intra-depth 2 --tu-inter-depth 2
+--tskip --me 3 --wpp --subme 7 --preset slow --crf 14.5 --b-intra --b-pyramid --weightp --weightb
+--no-rect --no-amp --rd 5 --rdoq-level 2 --psy-rdoq 2 --psy-rd 2 --no-open-gop --qcomp 0.72 --max-merge 5
+--output-depth {bits:d}
