@@ -7,6 +7,8 @@ from vardefunc import initialise_input
 from project_module import flt
 
 
+shader = vse.get_shader(r"FSRCNNX_x2_56-16-4-1.glsl")
+
 ini = vse.generate.init_project("x265")
 
 core = vse.util.get_vs_core(reserve_core=ini.reserve_core)
@@ -46,7 +48,8 @@ def filterchain(src: vs.VideoNode = US_BD.clip_cut
 
 
     #--------- Rescaling --------#
-    rescale = flt.angel_aa(ef, descale_height=720, descale_b=0, descale_c=1/2, mask=True, rfactor=1.2, alpha=0.25, beta=0.5, gamma=40, nrad=2, mdis=20)
+    rescale = flt.angel_aa(ef, descale_height=720, descale_b=0, descale_c=1/2, mask=True, rfactor=1.2, alpha=0.25, beta=0.5, gamma=40, nrad=2, mdis=20,
+                           rx=2.0, ry=2.0, darkstr=0, brightstr=0.7)
     chroma = flt.chroma_aa(rescale, transpose=True, clamp_strength=2.0, opencl=True) # I gave up on this
 
 
@@ -54,7 +57,7 @@ def filterchain(src: vs.VideoNode = US_BD.clip_cut
     degrain = flt.degrain(chroma, thSAD=75) # The source is pretty grainy and dpir can't reduce the grain much thus make it harder to deband.
     rescale32 = depth(degrain, 32)
     rescale_444= to_444(rescale32, 1920, 1080, znedi=False, join_planes=True)
-    deblock_444 = dpir(rescale_444, strength=20, mode="deblock", matrix=1, cuda=True, i444=True) # > strength=20. yes, the blocking is real.
+    deblock_444 = dpir(rescale_444, strength=20, mode="deblock", matrix=1, cuda=True, i444=True)
     deblock_420 = core.fmtc.resample(deblock_444, css="420")
     deblock = depth(deblock_420, 16)
 
