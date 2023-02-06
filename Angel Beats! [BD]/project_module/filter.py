@@ -14,7 +14,8 @@ core = vs.core
 
 def angel_aa(clip: vs.VideoNode, descale_height: int = 720, descale_b: float = 0, descale_c: float = 1/2, mask: bool = True,
              rfactor: float = 2.0, sraa_width: int = 1920, sraa_height: int = 1080, kernel: ScalerT = Catrom,
-             alpha: float = 0.25, beta: float = 0.5, gamma: float = 40, nrad: int = 2, mdis: int = 20, vcheck: int = 2, vthresh0: int = 12, vthresh1: int = 24, vthresh2: int = 4) -> vs.VideoNode:
+             alpha: float = 0.25, beta: float = 0.5, gamma: float = 40, nrad: int = 2, mdis: int = 20, vcheck: int = 2, vthresh0: int = 12, vthresh1: int = 24, vthresh2: int = 4,
+             rx: float = 1.8, ry: float = 1.8, darkstr: float = 0, brightstr: float = 1.0, thmi: int = 80, thma: int = 128, thlimi=50, thlima=100) -> vs.VideoNode:
     """A wrapper I made. Mostly stolen"""
     from vardefunc import nnedi3_upscale, merge_chroma
     from vsaa import upscaled_sraa, Nnedi3SS, Nnedi3, Eedi3SR
@@ -43,7 +44,7 @@ def angel_aa(clip: vs.VideoNode, descale_height: int = 720, descale_b: float = 0
         lmask = depth(lmask, 16)
         upscaled_sraaa = core.std.MaskedMerge(clip_y, upscaled_sraaa, lmask)
 
-    fd = fine_dehalo(upscaled_sraaa, darkstr=0, brightstr=0.7, rx=2.0, ry=2.0)
+    fd = fine_dehalo(upscaled_sraaa, darkstr=darkstr, brightstr=brightstr, rx=rx, ry=ry, thmi=thmi, thma=thma, thlimi=thlimi, thlima=thlima)
     dehalo_min = core.std.Expr([upscaled_sraaa, fd], "x y min")
 
     if clip.format.num_planes == 1:
@@ -75,7 +76,6 @@ def chroma_aa(clip: vs.VideoNode, transpose: bool = False, clamp_strength: float
     clamp_u = clamp_aa(plane(clip, 1), nnedi_u, eedi_u, strength=clamp_strength)
     clamp_v = clamp_aa(plane(clip, 2), nnedi_v, eedi_v, strength=clamp_strength)
     merge = join([plane(clip, 0), clamp_u, clamp_v], vs.YUV)
-
     return WarpFixChromaBlend(merge, thresh=72, blur=3, btype=1, depth=2)
 
 def degrain(clip: vs.VideoNode, thSAD: int = 200, prefilter: vs.VideoNode = None) -> vs.VideoNode:
@@ -111,13 +111,10 @@ def masked_f3kdb(clip: vs.VideoNode,
     deb_mask_args: Dict[str, Any] = dict(detail_brz=0.05, lines_brz=0.08)
     deb_mask_args |= mask_args
 
-    bits, clip = _get_bits(clip)
-
     deband_mask = detail_mask_neo(clip, **deb_mask_args)
 
     deband = F3kdb.deband(clip, radius=rad, thr=thr, grains=grain)
-    deband_masked = core.std.MaskedMerge(deband, clip, deband_mask)
-    return deband_masked if bits == 16 else depth(deband_masked, bits)
+    return core.std.MaskedMerge(deband, clip, deband_mask)
 
 def placebo_debander(clip: vs.VideoNode, grain: int = 4, **deband_args: Any) -> vs.VideoNode:
     return join([  # Still not sure why splitting it up into planes is faster, but hey!
@@ -135,14 +132,10 @@ def masked_placebo(clip: vs.VideoNode,
     deb_mask_args: Dict[str, Any] = dict(detail_brz=0.05, lines_brz=0.08)
     deb_mask_args |= mask_args
 
-    bits, clip = _get_bits(clip)
-
     deband_mask = detail_mask_neo(clip, **deb_mask_args)
 
     deband = placebo_debander(clip, radius=rad, threshold=thr, grain=grain, iterations=itr)
-    deband_masked = core.std.MaskedMerge(deband, clip, deband_mask)
-    deband_masked = deband_masked if bits == 16 else depth(deband_masked, bits)
-    return deband_masked
+    return core.std.MaskedMerge(deband, clip, deband_mask)
 
 def placebo_debander(clip: vs.VideoNode, grain: int = 4, **deband_args: Any) -> vs.VideoNode:
     return join([  # Still not sure why splitting it up into planes is faster, but hey!
@@ -150,10 +143,3 @@ def placebo_debander(clip: vs.VideoNode, grain: int = 4, **deband_args: Any) -> 
         core.placebo.Deband(plane(clip, 1), grain=0, **deband_args),
         core.placebo.Deband(plane(clip, 2), grain=0, **deband_args)
     ])
-
-# Helper
-def _get_bits(clip: vs.VideoNode, expected_depth: int = 16) -> Tuple[int, vs.VideoNode]:
-    from vsutil import get_depth
-
-    bits = get_depth(clip)
-    return bits, depth(clip, expected_depth) if bits != expected_depth else clip
