@@ -34,7 +34,6 @@ def angel_aa(clip: vs.VideoNode, descale_height: int = 720, descale_b: float = 0
         aafunc=Eedi3SR(opencl=True, alpha=alpha, beta=beta, gamma=gamma, nrad=nrad, mdis=mdis, vcheck=vcheck, vthresh0=vthresh0, vthresh1=vthresh1, vthresh2=vthresh2, hp=True, ucubic=True, cost3=True, 
                        sclip_aa=Nnedi3(nsize=0, nns=4, qual=2))
     )
-    
     upscaled_sraaa = depth(upscaled_sraaa, 16)
 
     if mask:
