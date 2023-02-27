@@ -7,15 +7,14 @@ from vardefunc import initialise_input
 from project_module import flt
 
 
-shader = vse.get_shader(r"FSRCNNX_x2_56-16-4-1.glsl")
-
 ini = vse.generate.init_project("x265")
 
 core = vse.util.get_vs_core(reserve_core=ini.reserve_core)
 
 
 # Sources
-US_BD = vse.FileInfo(f"{ini.bdmv_dir}/00029.m2ts", (None, -24))
+US_BD = vse.FileInfo(f"{ini.bdmv_dir}/USBD/Angel Beats!/NCOP & NCED/00029.m2ts", (None, -24))
+JP_BD = vse.FileInfo(f"{ini.bdmv_dir}/JPBD/Angel Beats!/NCOP & NCED/00001.m2ts", (None, -24))
 
 
 zones: Dict[Tuple[int, int], Dict[str, Any]] = {  # Zoning for the encoder
@@ -33,11 +32,17 @@ def filterchain(src: vs.VideoNode = US_BD.clip_cut
     from lvsfunc.deblock import dpir
     from rekt.rektlvls import rektlvls
     from vardefunc import Graigasm, AddGrain, to_444
+    from vsdenoise.bm3d import Profile, BM3DCudaRTC
     from vstools import depth
+    
+    from vstools import plane, get_y, join
        
 
     #----- Importing source -----#
     src = US_BD.clip_cut
+    # src2 = JP_BD.clip_cut 
+    # The brightness between USBD & JPBD is different and I have no idea how to fix it.
+    # Let me know in Discord if you have any idea on how to fix it, cheers.
 
 
     #-------- Edge fixing -------#
@@ -50,24 +55,32 @@ def filterchain(src: vs.VideoNode = US_BD.clip_cut
     #--------- Rescaling --------#
     rescale = flt.angel_aa(ef, descale_height=720, descale_b=0, descale_c=1/2, mask=True, rfactor=1.2, alpha=0.25, beta=0.5, gamma=40, nrad=2, mdis=20,
                            rx=2.0, ry=2.0, darkstr=0, brightstr=0.7)
-    chroma = flt.chroma_aa(rescale, transpose=True, clamp_strength=2.0, opencl=True) # I gave up on this
+    # chroma = flt.chroma_aa(rescale, transpose=True, clamp_strength=2.0, opencl=True) # I gave up on this
 
 
-    #-------- Denoising & Deblocking --------#
-    degrain = flt.degrain(chroma, thSAD=75) # The source is pretty grainy and dpir can't reduce the grain much thus make it harder to deband.
-    rescale32 = depth(degrain, 32)
-    rescale_444= to_444(rescale32, 1920, 1080, znedi=False, join_planes=True)
-    deblock_444 = dpir(rescale_444, strength=20, mode="deblock", matrix=1, cuda=True, i444=True)
-    deblock_420 = core.fmtc.resample(deblock_444, css="420")
-    deblock = depth(deblock_420, 16)
+    #-------- Deblocking & Denoising --------#
+    # degrain = flt.degrain(chroma, thSAD=75) # The source is pretty grainy and dpir can't reduce the grain much thus make it harder to deband.
+    # rescale32 = depth(chroma, 32)
+    # rescale_444= to_444(rescale32, 1920, 1080, znedi=False, join_planes=True)
+    # deblock_444 = dpir(rescale_444, strength=20, mode="deblock", matrix=1, cuda=True, i444=True) # > strength=20. yes, the blocking is real.
+    # deblock_420 = core.fmtc.resample(deblock_444, css="420")
+    # deblock = depth(deblock_420, 16)
+
+    rescale32 = depth(rescale, 32)
+    rescale444 = to_444(rescale32, 1920, 1080, znedi=False, join_planes=True)
+    deblock_y = dpir(get_y(rescale444), strength=50, mode="deblock", matrix=1, cuda=False, i444=False)
+    deblock_uv = dpir(rescale444, strength=50, mode="deblock", matrix=1, cuda=True, i444=True)
+    deblock_uv = core.fmtc.resample(deblock_uv, css="420")
+    deblock = join(deblock_y, deblock_uv)
+    deblock = depth(deblock, 16)
+    denoise = BM3DCudaRTC(deblock, sigma=[1.25, 0], radius=1, profile=Profile.LOW_COMPLEXITY, matrix=1).clip
 
 
     #--------- Debanding --------# 
     deband = core.average.Mean([
-        flt.masked_f3kdb(deblock, rad=12, thr=[32, 24], grain=[24, 12], mask_args={'detail_brz': 0.007, 'lines_brz': 0.02}),
-        flt.masked_f3kdb(deblock, rad=16, thr=[40, 24], grain=[24, 12], mask_args={'detail_brz': 0.007, 'lines_brz': 0.02}),
-        flt.masked_f3kdb(deblock, rad=20, thr=[48, 24], grain=[24, 12], mask_args={'detail_brz': 0.007, 'lines_brz': 0.02}),
-        flt.masked_placebo(deblock, rad=16, thr=2, itr=2, grain=4, mask_args={'detail_brz': 0.007, 'lines_brz': 0.02})
+        flt.masked_f3kdb(denoise, rad=16, thr=[40, 24], grain=[24, 12], mask_args={'detail_brz': 0.007, 'lines_brz': 0.02}),
+        flt.masked_f3kdb(denoise, rad=20, thr=[48, 24], grain=[24, 12], mask_args={'detail_brz': 0.007, 'lines_brz': 0.02}),
+        flt.masked_placebo(denoise, rad=16, thr=4.0, itr=2, grain=4, mask_args={'detail_brz': 0.007, 'lines_brz': 0.02})
     ])
     
 
@@ -82,7 +95,6 @@ def filterchain(src: vs.VideoNode = US_BD.clip_cut
             AddGrain(seed=69420, constant=False),
             AddGrain(seed=69420, constant=False)
         ]).graining(deband)
-
 
     return grain
     
